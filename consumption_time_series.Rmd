@@ -1,0 +1,177 @@
+---
+title: "Predicting the Oil Cost and Consumption"
+author: "Mohammed AlKhamis"
+date: "11/9/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+library(TSstudio)
+library(tidyverse)
+library(forecast)
+library(dygraphs)
+
+```
+
+```{r}
+# head(oil_consumption)
+
+consumption_ts <- oil_consumption %>% group_by(year) %>% summarise(Total_Consumption = sum(oil_comsumption_in_EJ)) %>% 
+  select(Total_Consumption = Total_Consumption) %>%
+    # as_tsibble(index = year )
+  ts(, start = 1965, frequency = 1)
+
+```
+
+```{r}
+ts_plot(consumption_ts, 
+        title = "World Yearly Oil Consumption",
+        Ytitle = "Consumption in EJ",
+        Xtitle = "Years",
+        slider = TRUE)
+```
+
+```{r}
+dygraph(consumption_ts, 
+        main  = "World Yearly Oil Consumption",
+        ylab  = "Consumption in EJ",
+        xlab  = "Years") %>% 
+  dyRangeSelector()
+```
+
+```{r}
+ts_cor(consumption_ts)
+
+```
+
+```{r}
+dyy<- diff(consumption_ts)
+autoplot(dyy)
+```
+
+
+```{r}
+fit<- snaive(dyy) #Residual sd: 5.3954  
+print(summary(fit))
+checkresiduals(fit)
+```
+
+
+```{r}
+# ETS
+
+fit_ets<- ets(consumption_ts) #Residual SD: 0.0304
+print(summary(fit_ets))
+checkresiduals(fit_ets)
+```
+
+
+```{r}
+# arima 
+fit_arima<- auto.arima(consumption_ts) #Residual sd: sqr(21.48)
+fit_arima<- auto.arima(consumption_ts, d=5) #Residual sd: 5.52811 
+print(summary(fit_arima))
+checkresiduals(fit_arima)
+```
+
+
+```{r}
+
+# forecast
+
+fcs_cons <- forecast(fit_ets, h= 10)
+autoplot(fcs_cons)
+print(summary(fcs_cons))
+plot_forecast(fcs_cons)
+```
+
+```{r}
+
+# forecast
+fcs_cons1 <- forecast(fit_arima, h= 10)
+autoplot(fcs_cons1)
+print(summary(fcs_cons1))
+plot_forecast(fcs_cons1)
+```
+
+```{r}
+
+# forecast
+fcs_cons1 <- forecast(fit_arima, h= 2)
+autoplot(fcs_cons1)
+print(summary(fcs_cons1))
+plot_forecast(fcs_cons1)
+```
+
+```{r}
+forcast_con <- fortify(fcs_cons) 
+forcast_con[1:56, 3]
+dim(forcast_con)
+consumption_df <- data.frame(date  = forcast_con$Index, consumption = c(forcast_con [ 1:56, 3], forcast_con [ 57:nrow(forcast_con), 4]))
+consumption_df %>% 
+  ggplot(aes(x=date, y= consumption))+
+  geom_line()
+```
+
+```{r}
+ts_seasonal(consumption_ts, type = "normal")
+```
+
+```{r}
+# Forecasting applications
+# Setting training and testing partitions
+consumption_ts1 <- ts_split(ts.obj = consumption_ts, sample.out = 4)
+train <- consumption_ts1$train
+test <- consumption_ts1$test
+
+# Forecasting with auto.arima
+library(forecast)
+md <- auto.arima(train)
+fc <- forecast(md, h = 4)
+
+# Plotting actual vs. fitted and forecasted
+test_forecast(actual = consumption_ts, forecast.obj = fc, test = test)
+```
+
+
+```{r}
+plot_forecast(fc)
+
+```
+
+```{r}
+# Run horse race between multiple models
+methods <- list(ets1 = list(method = "ets",
+                            method_arg = list(opt.crit = "lik"),
+                            notes = "ETS model with opt.crit = lik"),
+                ets2 = list(method = "ets",
+                            method_arg = list(opt.crit = "amse"),
+                            notes = "ETS model with opt.crit = amse"),
+                arima1 = list(method = "arima",
+                              method_arg = list(order = c(2,1,0)),
+                              notes = "ARIMA(2,1,0)"),
+                arima2 = list(method = "arima",
+                              method_arg = list(order = c(2,1,2),
+                                                seasonal = list(order = c(1,1,1))),
+                              notes = "SARIMA(2,1,2)(1,1,1)"),
+                hw = list(method = "HoltWinters",
+                          method_arg = NULL,
+                          notes = "HoltWinters Model"),
+                tslm = list(method = "tslm",
+                            method_arg = list(formula = input ~ trend + season),
+                            notes = "tslm model with trend and seasonal components"))
+# Training the models with backtesting
+md <- train_model(input = consumption_ts,
+                  methods = methods,
+                  train_method = list(partitions = 6, 
+                                      sample.out = 4, 
+                                      space = 3),
+                  horizon = 12,
+                  error = "MAPE")
+```
+
+```{r}
+plot_model(md)
+
+```
+

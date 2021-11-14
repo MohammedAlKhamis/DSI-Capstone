@@ -1,0 +1,114 @@
+---
+runtime: shiny 
+output: html_notebook
+---
+
+<!-- Today I learned how to run shiny locally as will and making interactive plot that would help me implement my assumption on my capstone idea  -->
+```{r echo=FALSE}
+library(TSstudio)
+library(tidyverse)
+library(forecast)
+library(dygraphs)
+library(tidyverse)
+library(readxl)
+library(tidyquant)
+library(mice)
+library(visdat)
+library(naniar)
+library(plotly)
+library(ggplot2)
+library(tidymodels)
+library(ggfortify)
+```
+
+```{r}
+oil_consumption1 <- read_excel("../data/coal-consumption-per-TBD.xlsx")
+ # change the class of the columns to numeric 
+vec<- seq(2,57,1)
+oil_consumption1[ , vec] <- apply(oil_consumption1[ , vec,drop=F], 2,           
+                                 function(x) as.numeric(as.character(x)))
+# Tidy my data 
+oil_consumption1 <- oil_consumption1 %>% 
+  pivot_longer(-c(country, per_region), names_to = "year", values_to = "oil_comsumption_in_EJ")
+
+# therefore we will do a back fill 
+oil_consumption1 <- oil_consumption1 %>% fill(oil_comsumption_in_EJ, .direction = "up")
+sum(is.na(oil_consumption1))
+
+```
+
+
+```{r}
+head(oil_consumption1)
+consumption_ts1 <- oil_consumption1 %>% group_by(year) %>% summarise(Total_Consumption = sum(oil_comsumption_in_EJ)) %>% 
+  select(Total_Consumption = Total_Consumption) %>%
+ts(, start = c(1965), frequency = 1)
+autoplot(consumption_ts1)
+
+fit_ets<- ets(consumption_ts1) #Residual sd: 0.0304
+print(summary(fit_ets))
+checkresiduals(fit_ets)
+
+# forcast
+fcs_cons <- forecast(fit_ets, h= 10)
+autoplot(fcs_cons)
+print(summary(fcs_cons))
+plot_forecast(fcs_cons)
+
+forcast_con <- fortify(fcs_cons) 
+forcast_con[1:56, 3]
+dim(forcast_con)
+
+consumption_df <- data.frame(date  = forcast_con$Index, consumption = c(forcast_con [ 1:56, 3], forcast_con [ 57:nrow(forcast_con), 4]))
+model <- consumption_df
+# 
+# model %>% 
+#   ggplot(aes(x=date, y= consumption))+
+#   geom_line()
+# plot_forecast(fcs_cons)
+```
+
+```{r echo=FALSE}
+# sliderInput("cr_when", label = "When:", 
+#             min = 0, max = 120, value = 0, step = 0.2)
+# sliderInput("cr_wieght", label = "wieght:", 
+#             min = 0, max = 10, value = 0, step = 0.05)
+# sliderInput("cr_likelihood", label = "likelihood:", 
+#             min = 0, max = 1, value = 0, step = 0.05)
+```
+
+```{r echo=FALSE}
+renderPlot({
+  
+# crisis <- list(when = 58,
+#                wieght = input$cr_wieght,
+#                likelihood = input$cr_likelihood)
+# 
+# 
+
+
+# head(model)
+# leave
+# model[1:57, 2]
+
+#adjust
+model[57, 2] <- 96600
+model[58, 2] <- 99900
+model[59, 2] <- 101700
+model[60, 2] <- 102500
+model[61, 2] <- 103000
+model[62, 2] <- 103500
+model[63, 2] <- 104100
+model[64, 2] <- 104800
+model[65, 2] <- 105600
+model[66, 2] <- 106000
+# model[crisis$when:nrow(model), 2] <- model[58:nrow(model), 2] + seq(20,100,10) # + crisis$likelihood#crisis$wieght #(model[crisis$when:nrow(model), 2])   #crisis$wieght * crisis$likelihood
+
+plot(model, type= "l")
+  
+  
+  
+})
+  
+```
+

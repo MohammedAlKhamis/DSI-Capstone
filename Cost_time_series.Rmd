@@ -1,0 +1,152 @@
+---
+title: "Untitled"
+author: "Mohammed AlKhamis"
+date: "11/9/2021"
+output:
+  html_document: default
+  pdf_document: default
+---
+
+```{r setup, include=FALSE}
+library(TSstudio)
+library(tidyverse)
+library(forecast)
+library(dygraphs)
+# install.packages("ggfortify")
+library(ggfortify)
+
+```
+
+```{r}
+cost <- read_csv("../data/MacroTrends_Data_Download.csv")
+# head(cost)
+cost_ts <- cost %>% select(cost = cost) %>% ts(, start = c(1946, 1), frequency = 12)
+
+```
+
+```{r}
+ts_plot(cost_ts, 
+        title = "World Yearly Oil Cost ",
+        Ytitle = "Cost  in EJ",
+        Xtitle = "Years",
+        slider = TRUE)
+```
+
+```{r}
+dygraph(cost_ts, 
+        main  = "World Yearly Oil Cost ",
+        ylab  = "Cost  in EJ",
+        xlab  = "Years") %>% 
+  dyRangeSelector()
+```
+
+```{r}
+ts_decompose(cost_ts)
+```
+```{r}
+ts_cor(cost_ts)
+
+```
+
+```{r}
+ts_seasonal(cost_ts, type = "normal")
+dy <- diff(diff(cost_ts))
+autoplot(dy)
+# autoplot(diff(cost_ts))
+ggseasonplot(dy)
+ggsubseriesplot(dy)
+```
+
+```{r}
+# Forecasting applications
+# Setting training and testing partitions
+cost_ts1 <- ts_split(ts.obj = cost_ts, sample.out = 12)
+train <- cost_ts1$train
+test <- cost_ts1$test
+
+# Forecasting with auto.arima
+library(forecast)
+md <- auto.arima(train, d=1 )
+summary(md)
+
+fc <- forecast(md, h = 12)
+# time(fc)
+# cycle(fc)
+# class(fc)
+# Plotting actual vs. fitted and forecasted
+test_forecast(actual = cost_ts, forecast.obj = fc, test = test)
+```
+
+
+```{r}
+plot_forecast(fc)
+```
+
+```{r}
+# Run horse race between multiple models
+methods <- list(ets1 = list(method = "ets",
+                            method_arg = list(opt.crit = "lik"),
+                            notes = "ETS model with opt.crit = lik"),
+                ets2 = list(method = "ets",
+                            method_arg = list(opt.crit = "amse"),
+                            notes = "ETS model with opt.crit = amse"),
+                arima1 = list(method = "arima",
+                              method_arg = list(order = c(2,1,0)),
+                              notes = "ARIMA(2,1,0)"),
+                arima2 = list(method = "arima",
+                              method_arg = list(order = c(2,1,2),
+                                                seasonal = list(order = c(1,1,1))),
+                              notes = "SARIMA(2,1,2)(1,1,1)"),
+                hw = list(method = "HoltWinters",
+                          method_arg = NULL,
+                          notes = "HoltWinters Model"),
+                tslm = list(method = "tslm",
+                            method_arg = list(formula = input ~ trend + season),
+                            notes = "tslm model with trend and seasonal components"))
+
+# Training the models with backtesting
+md <- train_model(input = cost_ts,
+                  methods = methods,
+                  train_method = list(partitions = 6, 
+                                      sample.out = 12, 
+                                      space = 3),
+                  horizon = 12,
+                  error = "MAPE")
+```
+
+```{r}
+
+```
+
+```{r}
+plot_model(md)
+```
+
+```{r}
+Cost_df <- data.frame(year = floor(time(cost_ts)), month = cycle(cost_ts),
+   cost = as.numeric(cost_ts))
+```
+
+```{r}
+plot_forecast(fc)
+```
+
+```{r}
+# fc$model$model$# %>%  str()
+forcast <- fortify(fc) 
+
+```
+
+```{r}
+cost_df <- data.frame(date  = forcast$Index, cost = c(forcast [ 1:899, 3], forcast [ 900:nrow(forcast), 4]))
+```
+ 
+ 
+```{r}
+
+cost_df %>% ggplot(aes(x = date, y = cost)) +
+  geom_line()
+
+
+```
+ 
